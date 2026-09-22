@@ -140,8 +140,14 @@
       </select>
       <div class="row2">
         <div><label for="f-date">Kuupäev</label><input type="date" id="f-date"></div>
-        <div><label for="f-time">Kellaaeg</label><input type="time" id="f-time" value="18:00"></div>
+        <div><label for="f-time">Algusaeg</label><input type="time" id="f-time" value="18:00"></div>
       </div>
+      <label for="f-duration">Kestus</label>
+      <select id="f-duration">
+        <option value="60">1 tund</option>
+        <option value="90" selected>1,5 tundi</option>
+        <option value="120">2 tundi</option>
+      </select>
       <label for="f-location">Väljak / piirkond (valikuline)</label>
       <input type="text" id="f-location" placeholder="nt lepitakse hiljem kokku">
       <label for="f-note">Märkus (valikuline)</label>
@@ -193,6 +199,14 @@ function fmtDate(dateStr) {
   const days = ['P','E','T','K','N','R','L'];
   const months = ['jaan','veebr','märts','apr','mai','juuni','juuli','aug','sept','okt','nov','dets'];
   return days[dt.getDay()] + ', ' + d + '. ' + months[m - 1];
+}
+
+function addMinutes(timeStr, mins) {
+  const [h, m] = String(timeStr).split(':').map(Number);
+  const total = (h * 60 + m + Number(mins) + 1440) % 1440;
+  const eh = Math.floor(total / 60);
+  const em = total % 60;
+  return String(eh).padStart(2, '0') + ':' + String(em).padStart(2, '0');
 }
 
 async function apiGet() {
@@ -332,10 +346,12 @@ toggleBtn.addEventListener('click', () => {
 document.getElementById('f-submit').addEventListener('click', async () => {
   const kind = document.getElementById('f-kind').value;
   const date = document.getElementById('f-date').value;
-  const time = document.getElementById('f-time').value;
+  const startTime = document.getElementById('f-time').value;
+  const duration = document.getElementById('f-duration').value;
   const location = document.getElementById('f-location').value.trim();
   const note = document.getElementById('f-note').value.trim();
-  if (!date || !time) { alert('Vali kuupäev ja kellaaeg.'); return; }
+  if (!date || !startTime) { alert('Vali kuupäev ja kellaaeg.'); return; }
+  const time = startTime + '–' + addMinutes(startTime, duration);
 
   const btn = document.getElementById('f-submit');
   btn.disabled = true;
