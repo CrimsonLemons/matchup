@@ -125,3 +125,260 @@
     </div>
     <span class="court-tag">avatud üleskutsed</span>
   </header>
+
+  <section>
+    <div class="card" id="me-card"></div>
+  </section>
+
+  <section>
+    <button class="toggle-form" id="toggle-form-btn">+ Uus üleskutse</button>
+    <div class="card" id="new-form">
+      <label for="f-kind">Mängu tüüp</label>
+      <select id="f-kind">
+        <option value="singles">Üksikmäng</option>
+        <option value="doubles">Paarismäng</option>
+      </select>
+      <div class="row2">
+        <div><label for="f-date">Kuupäev</label><input type="date" id="f-date"></div>
+        <div><label for="f-time">Kellaaeg</label><input type="time" id="f-time" value="18:00"></div>
+      </div>
+      <label for="f-location">Väljak / piirkond (valikuline)</label>
+      <input type="text" id="f-location" placeholder="nt lepitakse hiljem kokku">
+      <label for="f-note">Märkus (valikuline)</label>
+      <textarea id="f-note"></textarea>
+      <button class="btn-primary" id="f-submit">Postita üleskutse</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Tulevased üleskutsed</h2>
+    <div id="matches-list"><div class="empty">Laen...</div></div>
+  </section>
+
+  <section>
+    <h2>Registreerunud mängijad</h2>
+    <div class="card"><div class="players-list" id="players-list"></div></div>
+  </section>
+</div>
+
+<script>
+// ==== SEADISTUS: pane siia oma Apps Scripti "Web app URL" ====
+const CONFIG = {
+  API_URL: 'https://script.google.com/macros/s/AKfycbwTQBRcr8YhuBghKEyqrMzAOcT69LPurxnmxLnknvVd2RKkixzDWSCw6AxSPXycKRQY/exec'
+};
+// ================================================================
+
+const LEVELS = ["Algaja", "IV liiga", "III liiga", "II liiga"];
+let myName = localStorage.getItem('tp_name') || '';
+let myLevel = localStorage.getItem('tp_level') || '';
+let cache = { players: [], matches: [] };
+
+const onboard = document.getElementById('onboard');
+const meCard = document.getElementById('me-card');
+const matchesList = document.getElementById('matches-list');
+const playersList = document.getElementById('players-list');
+const toggleBtn = document.getElementById('toggle-form-btn');
+const newForm = document.getElementById('new-form');
+
+function escapeHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s == null ? '' : String(s);
+  return d.innerHTML;
+}
+
+function fmtDate(dateStr) {
+  if (!dateStr) return '';
+  const [y, m, d] = String(dateStr).split('-').map(Number);
+  const dt = new Date(y, m - 1, d);
+  const days = ['P','E','T','K','N','R','L'];
+  const months = ['jaan','veebr','märts','apr','mai','juuni','juuli','aug','sept','okt','nov','dets'];
+  return days[dt.getDay()] + ', ' + d + '. ' + months[m - 1];
+}
+
+async function apiGet() {
+  const res = await fetch(CONFIG.API_URL);
+  return res.json();
+}
+
+async function apiPost(payload) {
+  try {
+    const res = await fetch(CONFIG.API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // väldib CORS preflighti
+      body: JSON.stringify(payload)
+    });
+    return await res.json();
+  } catch (e) {
+    // Kiri läks tõenäoliselt siiski kohale (Google Sheet salvestab enne vastuse saatmist) —
+    // ainult vastuse lugemine brauseris ebaõnnestus. Ei viska viga edasi, et kasutajaliides ei jääks kinni.
+    return null;
+  }
+}
+
+function renderMe() {
+  meCard.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <div>
+        <div style="font-weight:600;">${escapeHtml(myName)}</div>
+        <div class="notice">Tase: ${escapeHtml(myLevel)}</div>
+      </div>
+      <button class="btn-ghost" id="change-level-btn">Muuda taset</button>
+    </div>
+  `;
+  document.getElementById('change-level-btn').addEventListener('click', async () => {
+    const idx = LEVELS.indexOf(myLevel);
+    const next = LEVELS[(idx + 1) % LEVELS.length];
+    myLevel = next;
+    localStorage.setItem('tp_level', next);
+    await apiPost({ action: 'savePlayer', name: myName, level: myLevel });
+    renderMe();
+    refresh();
+  });
+}
+
+function renderPlayers() {
+  if (!cache.players.length) {
+    playersList.innerHTML = '<div class="empty" style="border:none;padding:0;">Veel keegi pole registreerunud.</div>';
+    return;
+  }
+  playersList.innerHTML = cache.players.map(p =>
+    `<div class="pill">${escapeHtml(p.name)} · ${escapeHtml(p.level)}</div>`
+  ).join('');
+}
+
+function renderMatches() {
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const upcoming = cache.matches
+    .filter(m => m.date >= todayStr)
+    .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+
+  if (!upcoming.length) {
+    matchesList.innerHTML = '<div class="empty">Ühtegi tulevast üleskutset veel pole. Ole esimene!</div>';
+    return;
+  }
+
+  matchesList.innerHTML = upcoming.map(m => {
+    const total = m.kind === 'doubles' ? 4 : 2;
+    const joined = m.participants.length;
+    const isFull = joined >= total;
+    const iAmIn = m.participants.includes(myName);
+    const iAmCreator = m.creatorName === myName;
+
+    const pills = m.participants.map(name =>
+      `<div class="pill">${escapeHtml(name)}${name === m.creatorName ? ' 🎾' : ''}</div>`
+    ).join('');
+
+    let actions = '';
+    if (iAmCreator) {
+      actions = `<div class="match-actions"><button class="btn-danger-outline" data-cancel="${m.id}">Tühista üleskutse</button></div>`;
+    } else if (iAmIn) {
+      actions = `<div class="match-actions"><button class="btn-ghost" style="flex:1;" data-leave="${m.id}">Loobun</button></div>`;
+    } else if (!isFull) {
+      actions = `<div class="match-actions"><button class="btn-primary" style="margin-top:0;" data-join="${m.id}">Tulen kaasa</button></div>`;
+    }
+
+    return `
+      <div class="card match-card">
+        <div class="match-top">
+          <div>
+            <div class="match-when">${fmtDate(m.date)} · ${escapeHtml(m.time)}</div>
+            <div class="match-kind">${m.kind === 'doubles' ? 'paarismäng' : 'üksikmäng'}</div>
+          </div>
+          <div class="slots ${isFull ? 'full' : ''}">${joined}/${total}</div>
+        </div>
+        ${m.location ? `<div class="match-meta">📍 ${escapeHtml(m.location)}</div>` : ''}
+        ${m.note ? `<div class="match-note">${escapeHtml(m.note)}</div>` : ''}
+        <div class="participants">${pills}</div>
+        ${actions}
+      </div>
+    `;
+  }).join('');
+
+  matchesList.querySelectorAll('[data-join]').forEach(btn =>
+    btn.addEventListener('click', () => joinMatch(btn.dataset.join)));
+  matchesList.querySelectorAll('[data-leave]').forEach(btn =>
+    btn.addEventListener('click', () => leaveMatch(btn.dataset.leave)));
+  matchesList.querySelectorAll('[data-cancel]').forEach(btn =>
+    btn.addEventListener('click', () => cancelMatch(btn.dataset.cancel)));
+}
+
+async function refresh() {
+  try {
+    cache = await apiGet();
+    renderPlayers();
+    renderMatches();
+  } catch (e) {
+    matchesList.innerHTML = '<div class="empty">Andmeid ei õnnestunud laadida. Kontrolli API_URL seadistust.</div>';
+  }
+}
+
+async function joinMatch(id) {
+  await apiPost({ action: 'joinMatch', matchId: id, name: myName });
+  refresh();
+}
+async function leaveMatch(id) {
+  await apiPost({ action: 'leaveMatch', matchId: id, name: myName });
+  refresh();
+}
+async function cancelMatch(id) {
+  if (!confirm('Tühistada see üleskutse?')) return;
+  await apiPost({ action: 'cancelMatch', matchId: id, requesterName: myName });
+  refresh();
+}
+
+toggleBtn.addEventListener('click', () => {
+  newForm.classList.toggle('open');
+  toggleBtn.textContent = newForm.classList.contains('open') ? '– Peida vorm' : '+ Uus üleskutse';
+});
+
+document.getElementById('f-submit').addEventListener('click', async () => {
+  const kind = document.getElementById('f-kind').value;
+  const date = document.getElementById('f-date').value;
+  const time = document.getElementById('f-time').value;
+  const location = document.getElementById('f-location').value.trim();
+  const note = document.getElementById('f-note').value.trim();
+  if (!date || !time) { alert('Vali kuupäev ja kellaaeg.'); return; }
+
+  const btn = document.getElementById('f-submit');
+  btn.disabled = true;
+  try {
+    await apiPost({ action: 'createMatch', kind, date, time, location, note, creatorName: myName });
+    document.getElementById('f-date').value = '';
+    document.getElementById('f-location').value = '';
+    document.getElementById('f-note').value = '';
+    newForm.classList.remove('open');
+    toggleBtn.textContent = '+ Uus üleskutse';
+    refresh();
+  } catch (e) {
+    alert('Postitamine ebaõnnestus. Proovi uuesti.');
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+document.getElementById('onboard-save').addEventListener('click', async () => {
+  const name = document.getElementById('onboard-name').value.trim();
+  const level = document.getElementById('onboard-level').value;
+  if (!name || !level) { alert('Palun täida nimi ja tase.'); return; }
+  myName = name;
+  myLevel = level;
+  localStorage.setItem('tp_name', name);
+  localStorage.setItem('tp_level', level);
+  onboard.style.display = 'none';
+  renderMe();
+  apiPost({ action: 'savePlayer', name: myName, level: myLevel });
+  refresh();
+});
+
+// Käivitus
+if (myName && myLevel) {
+  onboard.style.display = 'none';
+  renderMe();
+} else {
+  onboard.style.display = 'flex';
+}
+refresh();
+setInterval(refresh, 15000); // uuendab andmeid iga 15 sekundi järel
+</script>
+</body>
+</html>
