@@ -1,384 +1,178 @@
-<!DOCTYPE html>
-<html lang="et">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>MatchUp</title>
-<link rel="manifest" href="data:application/manifest+json,{%22name%22:%22MatchUp%22,%22short_name%22:%22MatchUp%22,%22display%22:%22standalone%22,%22start_url%22:%22.%22,%22background_color%22:%22%230E3A4C%22,%22theme_color%22:%22%230E3A4C%22}">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<style>
-  :root {
-    --court-deep: #16241C;
-    --court-mid: #1E3226;
-    --line-white: #F3ECDC;
-    --ball: #E3603F;
-    --on-ball: #F8F3E6;
-    --text: #F3ECDC;
-    --text-dim: #A9BBA8;
-    --card-bg: rgba(243,236,220,0.06);
-    --card-border: rgba(243,236,220,0.16);
-    --danger: #E3603F;
-    --radius: 4px;
+/**
+ * Tenniseplats — Google Apps Script backend
+ *
+ * PAIGALDAMINE:
+ * 1. Loo uus Google Sheet (sheets.new).
+ * 2. Extensions -> Apps Script.
+ * 3. Kustuta vaikimisi kood ja kleebi kogu see fail asemele.
+ * 4. Salvesta (Ctrl/Cmd+S).
+ * 5. Deploy -> New deployment -> Type: "Web app".
+ *    Execute as: Me. Who has access: Anyone.
+ * 6. Deploy, luba juurdepääs (Authorize access) ja kopeeri "Web app URL".
+ * 7. See URL läheb index.html failis CONFIG.API_URL kohale.
+ *
+ * Skript loob Sheeti automaatselt kaks lehte ("Players" ja "Matches"),
+ * kui neid seal veel pole — midagi käsitsi luua ei ole vaja.
+ */
+
+const PLAYERS_SHEET = 'Players';
+const MATCHES_SHEET = 'Matches';
+
+function getSheet_(name, headers) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName(name);
+  if (!sheet) {
+    sheet = ss.insertSheet(name);
+    sheet.appendRow(headers);
   }
-  * { box-sizing: border-box; }
-  html, body { height: 100%; margin: 0; }
-  body {
-    background: linear-gradient(180deg, var(--court-deep) 0%, var(--court-mid) 100%);
-    color: var(--text);
-    font-family: 'Inter', system-ui, sans-serif;
-    -webkit-font-smoothing: antialiased;
-    padding-top: env(safe-area-inset-top, 0px);
-    padding-bottom: env(safe-area-inset-bottom, 0px);
-  }
-  .wrap { max-width: 640px; margin: 0 auto; padding: 28px 18px 64px; }
-
-  header.top {
-    display: flex; align-items: baseline; justify-content: space-between;
-    border-bottom: 2px solid var(--line-white); padding-bottom: 14px; margin-bottom: 22px;
-  }
-  header.top h1 { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 28px; margin: 0; }
-  header.top .sub { font-size: 12.5px; color: var(--text-dim); margin-top: 4px; }
-  header.top .court-tag {
-    font-family: 'Oswald', sans-serif; font-size: 13px; color: var(--ball);
-    border: 1.5px solid var(--ball); padding: 3px 9px; border-radius: var(--radius); white-space: nowrap;
-  }
-
-  section { margin-bottom: 30px; }
-  section h2 { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 15px; margin: 0 0 12px; }
-
-  .card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: var(--radius); padding: 16px; }
-
-  label { display: block; font-size: 12px; color: var(--text-dim); margin: 12px 0 5px; }
-  label:first-of-type { margin-top: 0; }
-
-  select, input[type="date"], input[type="time"], input[type="text"], textarea {
-    width: 100%; background: rgba(0,0,0,0.15); border: 1px solid var(--card-border);
-    color: var(--text); border-radius: var(--radius); padding: 10px 11px; font-size: 15px; font-family: inherit;
-  }
-  select:focus, input:focus, textarea:focus, button:focus-visible { outline: 2px solid var(--ball); outline-offset: 1px; }
-  textarea { resize: vertical; min-height: 54px; }
-  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-
-  button {
-    font-family: 'Inter', sans-serif; font-weight: 600; font-size: 14px;
-    border-radius: var(--radius); border: none; padding: 11px 16px; cursor: pointer;
-  }
-  .btn-primary { background: var(--ball); color: var(--on-ball); width: 100%; margin-top: 16px; }
-  .btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
-  .btn-ghost { background: transparent; border: 1px solid var(--card-border); color: var(--text); }
-  .btn-danger-outline { background: transparent; border: 1px solid var(--danger); color: var(--danger); font-size: 12.5px; padding: 6px 10px; }
-  .toggle-form { background: transparent; border: 1px solid var(--ball); color: var(--ball); width: 100%; }
-
-  .match-card { margin-bottom: 12px; }
-  .match-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
-  .match-when { font-family: 'Oswald', sans-serif; font-size: 19px; font-weight: 600; }
-  .match-kind { font-size: 11.5px; color: var(--text-dim); }
-  .slots { font-family: 'Oswald', sans-serif; font-size: 13px; color: var(--ball); border: 1px solid var(--ball); border-radius: var(--radius); padding: 2px 8px; white-space: nowrap; }
-  .slots.full { color: var(--text-dim); border-color: var(--card-border); }
-  .match-meta { font-size: 13px; color: var(--text-dim); margin-top: 6px; }
-  .match-note { font-size: 13.5px; margin-top: 8px; }
-  .participants { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
-  .pill { background: rgba(0,0,0,0.15); border-radius: 20px; padding: 4px 10px; font-size: 12.5px; }
-  .match-actions { display: flex; gap: 8px; margin-top: 12px; }
-  .match-actions button { flex: 1; }
-
-  .empty { color: var(--text-dim); font-size: 13.5px; text-align: center; padding: 26px 10px; border: 1px dashed var(--card-border); border-radius: var(--radius); }
-  .notice { font-size: 13px; color: var(--text-dim); }
-  .players-list { display: flex; flex-wrap: wrap; gap: 8px; }
-  #new-form { display: none; margin-top: 14px; }
-  #new-form.open { display: block; }
-
-  #onboard {
-    position: fixed; inset: 0; background: var(--court-deep);
-    display: flex; align-items: center; justify-content: center; padding: 24px; z-index: 10;
-  }
-  #onboard .card { max-width: 360px; width: 100%; }
-</style>
-</head>
-<body>
-
-<div id="onboard">
-  <div class="card">
-    <h2 style="font-family:'Oswald',sans-serif;">Tere tulemast! 🎾</h2>
-    <p class="notice">Sisesta oma nimi — seda näevad teised, kui postitad üleskutse või liitud mänguga.</p>
-    <label for="onboard-name">Sinu nimi</label>
-    <input type="text" id="onboard-name" placeholder="nt Reili">
-    <label for="onboard-level">Sinu tase</label>
-    <select id="onboard-level">
-      <option value="">— vali —</option>
-      <option>Algaja</option>
-      <option>IV liiga</option>
-      <option>III liiga</option>
-      <option>II liiga</option>
-    </select>
-    <button class="btn-primary" id="onboard-save">Alusta</button>
-  </div>
-</div>
-
-<div class="wrap">
-  <header class="top">
-    <div>
-      <h1>MatchUp</h1>
-      <div class="sub">Märgi endale mäng — keegi tuleb kaasa</div>
-    </div>
-    <span class="court-tag">avatud üleskutsed</span>
-  </header>
-
-  <section>
-    <div class="card" id="me-card"></div>
-  </section>
-
-  <section>
-    <button class="toggle-form" id="toggle-form-btn">+ Uus üleskutse</button>
-    <div class="card" id="new-form">
-      <label for="f-kind">Mängu tüüp</label>
-      <select id="f-kind">
-        <option value="singles">Üksikmäng</option>
-        <option value="doubles">Paarismäng</option>
-      </select>
-      <div class="row2">
-        <div><label for="f-date">Kuupäev</label><input type="date" id="f-date"></div>
-        <div><label for="f-time">Kellaaeg</label><input type="time" id="f-time" value="18:00"></div>
-      </div>
-      <label for="f-location">Väljak / piirkond (valikuline)</label>
-      <input type="text" id="f-location" placeholder="nt lepitakse hiljem kokku">
-      <label for="f-note">Märkus (valikuline)</label>
-      <textarea id="f-note"></textarea>
-      <button class="btn-primary" id="f-submit">Postita üleskutse</button>
-    </div>
-  </section>
-
-  <section>
-    <h2>Tulevased üleskutsed</h2>
-    <div id="matches-list"><div class="empty">Laen...</div></div>
-  </section>
-
-  <section>
-    <h2>Registreerunud mängijad</h2>
-    <div class="card"><div class="players-list" id="players-list"></div></div>
-  </section>
-</div>
-
-<script>
-// ==== SEADISTUS: pane siia oma Apps Scripti "Web app URL" ====
-const CONFIG = {
-  API_URL: 'https://script.google.com/macros/s/AKfycbwTQBRcr8YhuBghKEyqrMzAOcT69LPurxnmxLnknvVd2RKkixzDWSCw6AxSPXycKRQY/exec'
-};
-// ================================================================
-
-const LEVELS = ["Algaja", "IV liiga", "III liiga", "II liiga"];
-let myName = localStorage.getItem('tp_name') || '';
-let myLevel = localStorage.getItem('tp_level') || '';
-let cache = { players: [], matches: [] };
-
-const onboard = document.getElementById('onboard');
-const meCard = document.getElementById('me-card');
-const matchesList = document.getElementById('matches-list');
-const playersList = document.getElementById('players-list');
-const toggleBtn = document.getElementById('toggle-form-btn');
-const newForm = document.getElementById('new-form');
-
-function escapeHtml(s) {
-  const d = document.createElement('div');
-  d.textContent = s == null ? '' : String(s);
-  return d.innerHTML;
+  return sheet;
 }
 
-function fmtDate(dateStr) {
-  if (!dateStr) return '';
-  const [y, m, d] = String(dateStr).split('-').map(Number);
-  const dt = new Date(y, m - 1, d);
-  const days = ['P','E','T','K','N','R','L'];
-  const months = ['jaan','veebr','märts','apr','mai','juuni','juuli','aug','sept','okt','nov','dets'];
-  return days[dt.getDay()] + ', ' + d + '. ' + months[m - 1];
+function playersSheet_() {
+  return getSheet_(PLAYERS_SHEET, ['name', 'level', 'updatedAt']);
 }
 
-async function apiGet() {
-  const res = await fetch(CONFIG.API_URL);
-  return res.json();
+function matchesSheet_() {
+  const sheet = getSheet_(MATCHES_SHEET, [
+    'id', 'kind', 'date', 'time', 'location', 'note',
+    'creatorName', 'participants', 'createdAt'
+  ]);
+  // Force date/time columns to stay as plain text, so Google Sheets doesn't
+  // auto-convert "2026-09-25" or "18:00" into its own Date/Time type.
+  sheet.getRange('C:D').setNumberFormat('@');
+  return sheet;
 }
 
-async function apiPost(payload) {
-  try {
-    const res = await fetch(CONFIG.API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // väldib CORS preflighti
-      body: JSON.stringify(payload)
+function readRows_(sheet) {
+  const values = sheet.getDataRange().getValues();
+  const headers = values[0];
+  return values.slice(1)
+    .filter(row => row.some(cell => cell !== ''))
+    .map(row => {
+      const obj = {};
+      headers.forEach((h, i) => { obj[h] = row[i]; });
+      return obj;
     });
-    return await res.json();
-  } catch (e) {
-    // Kiri läks tõenäoliselt siiski kohale (Google Sheet salvestab enne vastuse saatmist) —
-    // ainult vastuse lugemine brauseris ebaõnnestus. Ei viska viga edasi, et kasutajaliides ei jääks kinni.
-    return null;
-  }
 }
 
-function renderMe() {
-  meCard.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center;">
-      <div>
-        <div style="font-weight:600;">${escapeHtml(myName)}</div>
-        <div class="notice">Tase: ${escapeHtml(myLevel)}</div>
-      </div>
-      <button class="btn-ghost" id="change-level-btn">Muuda taset</button>
-    </div>
-  `;
-  document.getElementById('change-level-btn').addEventListener('click', async () => {
-    const idx = LEVELS.indexOf(myLevel);
-    const next = LEVELS[(idx + 1) % LEVELS.length];
-    myLevel = next;
-    localStorage.setItem('tp_level', next);
-    await apiPost({ action: 'savePlayer', name: myName, level: myLevel });
-    renderMe();
-    refresh();
-  });
+function jsonResponse_(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
 }
 
-function renderPlayers() {
-  if (!cache.players.length) {
-    playersList.innerHTML = '<div class="empty" style="border:none;padding:0;">Veel keegi pole registreerunud.</div>';
-    return;
-  }
-  playersList.innerHTML = cache.players.map(p =>
-    `<div class="pill">${escapeHtml(p.name)} · ${escapeHtml(p.level)}</div>`
-  ).join('');
-}
-
-function renderMatches() {
-  const todayStr = new Date().toISOString().slice(0, 10);
-  const upcoming = cache.matches
-    .filter(m => m.date >= todayStr)
-    .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
-
-  if (!upcoming.length) {
-    matchesList.innerHTML = '<div class="empty">Ühtegi tulevast üleskutset veel pole. Ole esimene!</div>';
-    return;
-  }
-
-  matchesList.innerHTML = upcoming.map(m => {
-    const total = m.kind === 'doubles' ? 4 : 2;
-    const joined = m.participants.length;
-    const isFull = joined >= total;
-    const iAmIn = m.participants.includes(myName);
-    const iAmCreator = m.creatorName === myName;
-
-    const pills = m.participants.map(name =>
-      `<div class="pill">${escapeHtml(name)}${name === m.creatorName ? ' 🎾' : ''}</div>`
-    ).join('');
-
-    let actions = '';
-    if (iAmCreator) {
-      actions = `<div class="match-actions"><button class="btn-danger-outline" data-cancel="${m.id}">Tühista üleskutse</button></div>`;
-    } else if (iAmIn) {
-      actions = `<div class="match-actions"><button class="btn-ghost" style="flex:1;" data-leave="${m.id}">Loobun</button></div>`;
-    } else if (!isFull) {
-      actions = `<div class="match-actions"><button class="btn-primary" style="margin-top:0;" data-join="${m.id}">Tulen kaasa</button></div>`;
+function doGet(e) {
+  const tz = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
+  const players = readRows_(playersSheet_());
+  const matches = readRows_(matchesSheet_()).map(m => {
+    let participants = [];
+    try { participants = JSON.parse(m.participants || '[]'); } catch (err) {}
+    let date = m.date;
+    let time = m.time;
+    // Kaitse vanade, enne parandust juba "Date"-tüübiks moondunud ridade vastu.
+    if (Object.prototype.toString.call(date) === '[object Date]') {
+      date = Utilities.formatDate(date, tz, 'yyyy-MM-dd');
     }
-
-    return `
-      <div class="card match-card">
-        <div class="match-top">
-          <div>
-            <div class="match-when">${fmtDate(m.date)} · ${escapeHtml(m.time)}</div>
-            <div class="match-kind">${m.kind === 'doubles' ? 'paarismäng' : 'üksikmäng'}</div>
-          </div>
-          <div class="slots ${isFull ? 'full' : ''}">${joined}/${total}</div>
-        </div>
-        ${m.location ? `<div class="match-meta">📍 ${escapeHtml(m.location)}</div>` : ''}
-        ${m.note ? `<div class="match-note">${escapeHtml(m.note)}</div>` : ''}
-        <div class="participants">${pills}</div>
-        ${actions}
-      </div>
-    `;
-  }).join('');
-
-  matchesList.querySelectorAll('[data-join]').forEach(btn =>
-    btn.addEventListener('click', () => joinMatch(btn.dataset.join)));
-  matchesList.querySelectorAll('[data-leave]').forEach(btn =>
-    btn.addEventListener('click', () => leaveMatch(btn.dataset.leave)));
-  matchesList.querySelectorAll('[data-cancel]').forEach(btn =>
-    btn.addEventListener('click', () => cancelMatch(btn.dataset.cancel)));
+    if (Object.prototype.toString.call(time) === '[object Date]') {
+      time = Utilities.formatDate(time, tz, 'HH:mm');
+    }
+    return Object.assign({}, m, { date: date, time: time, participants: participants });
+  });
+  return jsonResponse_({ players: players, matches: matches });
 }
 
-async function refresh() {
+function doPost(e) {
+  let body;
   try {
-    cache = await apiGet();
-    renderPlayers();
-    renderMatches();
-  } catch (e) {
-    matchesList.innerHTML = '<div class="empty">Andmeid ei õnnestunud laadida. Kontrolli API_URL seadistust.</div>';
+    body = JSON.parse(e.postData.contents);
+  } catch (err) {
+    return jsonResponse_({ error: 'Vigane päring' });
+  }
+
+  try {
+    switch (body.action) {
+      case 'savePlayer':  return jsonResponse_(savePlayer_(body));
+      case 'createMatch': return jsonResponse_(createMatch_(body));
+      case 'joinMatch':   return jsonResponse_(joinMatch_(body));
+      case 'leaveMatch':  return jsonResponse_(leaveMatch_(body));
+      case 'cancelMatch': return jsonResponse_(cancelMatch_(body));
+      default:
+        return jsonResponse_({ error: 'Tundmatu tegevus' });
+    }
+  } catch (err) {
+    return jsonResponse_({ error: String(err) });
   }
 }
 
-async function joinMatch(id) {
-  await apiPost({ action: 'joinMatch', matchId: id, name: myName });
-  refresh();
-}
-async function leaveMatch(id) {
-  await apiPost({ action: 'leaveMatch', matchId: id, name: myName });
-  refresh();
-}
-async function cancelMatch(id) {
-  if (!confirm('Tühistada see üleskutse?')) return;
-  await apiPost({ action: 'cancelMatch', matchId: id, requesterName: myName });
-  refresh();
-}
+function savePlayer_(body) {
+  const sheet = playersSheet_();
+  const data = sheet.getDataRange().getValues();
+  const name = String(body.name || '').trim();
+  if (!name) throw new Error('Nimi puudub');
 
-toggleBtn.addEventListener('click', () => {
-  newForm.classList.toggle('open');
-  toggleBtn.textContent = newForm.classList.contains('open') ? '– Peida vorm' : '+ Uus üleskutse';
-});
-
-document.getElementById('f-submit').addEventListener('click', async () => {
-  const kind = document.getElementById('f-kind').value;
-  const date = document.getElementById('f-date').value;
-  const time = document.getElementById('f-time').value;
-  const location = document.getElementById('f-location').value.trim();
-  const note = document.getElementById('f-note').value.trim();
-  if (!date || !time) { alert('Vali kuupäev ja kellaaeg.'); return; }
-
-  const btn = document.getElementById('f-submit');
-  btn.disabled = true;
-  try {
-    await apiPost({ action: 'createMatch', kind, date, time, location, note, creatorName: myName });
-    document.getElementById('f-date').value = '';
-    document.getElementById('f-location').value = '';
-    document.getElementById('f-note').value = '';
-    newForm.classList.remove('open');
-    toggleBtn.textContent = '+ Uus üleskutse';
-    refresh();
-  } catch (e) {
-    alert('Postitamine ebaõnnestus. Proovi uuesti.');
-  } finally {
-    btn.disabled = false;
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][0] === name) {
+      sheet.getRange(i + 1, 2, 1, 2).setValues([[body.level, new Date().toISOString()]]);
+      return { ok: true };
+    }
   }
-});
-
-document.getElementById('onboard-save').addEventListener('click', async () => {
-  const name = document.getElementById('onboard-name').value.trim();
-  const level = document.getElementById('onboard-level').value;
-  if (!name || !level) { alert('Palun täida nimi ja tase.'); return; }
-  myName = name;
-  myLevel = level;
-  localStorage.setItem('tp_name', name);
-  localStorage.setItem('tp_level', level);
-  onboard.style.display = 'none';
-  renderMe();
-  apiPost({ action: 'savePlayer', name: myName, level: myLevel });
-  refresh();
-});
-
-// Käivitus
-if (myName && myLevel) {
-  onboard.style.display = 'none';
-  renderMe();
-} else {
-  onboard.style.display = 'flex';
+  sheet.appendRow([name, body.level, new Date().toISOString()]);
+  return { ok: true };
 }
-refresh();
-setInterval(refresh, 15000); // uuendab andmeid iga 15 sekundi järel
-</script>
-</body>
-</html>
+
+function createMatch_(body) {
+  const sheet = matchesSheet_();
+  const id = Utilities.getUuid();
+  sheet.appendRow([
+    id, body.kind, body.date, body.time, body.location || '', body.note || '',
+    body.creatorName, JSON.stringify([body.creatorName]), new Date().toISOString()
+  ]);
+  return { ok: true, id: id };
+}
+
+function findMatchRow_(sheet, id) {
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][0] === id) return i + 1;
+  }
+  return -1;
+}
+
+function joinMatch_(body) {
+  const sheet = matchesSheet_();
+  const row = findMatchRow_(sheet, body.matchId);
+  if (row === -1) throw new Error('Üleskutset ei leitud');
+
+  const kind = sheet.getRange(row, 2).getValue();
+  const total = kind === 'doubles' ? 4 : 2;
+  let participants = [];
+  try { participants = JSON.parse(sheet.getRange(row, 8).getValue() || '[]'); } catch (e) {}
+
+  if (participants.indexOf(body.name) === -1 && participants.length < total) {
+    participants.push(body.name);
+    sheet.getRange(row, 8).setValue(JSON.stringify(participants));
+  }
+  return { ok: true };
+}
+
+function leaveMatch_(body) {
+  const sheet = matchesSheet_();
+  const row = findMatchRow_(sheet, body.matchId);
+  if (row === -1) throw new Error('Üleskutset ei leitud');
+
+  let participants = [];
+  try { participants = JSON.parse(sheet.getRange(row, 8).getValue() || '[]'); } catch (e) {}
+  participants = participants.filter(p => p !== body.name);
+  sheet.getRange(row, 8).setValue(JSON.stringify(participants));
+  return { ok: true };
+}
+
+function cancelMatch_(body) {
+  const sheet = matchesSheet_();
+  const row = findMatchRow_(sheet, body.matchId);
+  if (row === -1) throw new Error('Üleskutset ei leitud');
+
+  const creatorName = sheet.getRange(row, 7).getValue();
+  if (creatorName !== body.requesterName) throw new Error('Ainult looja saab tühistada');
+  sheet.deleteRow(row);
+  return { ok: true };
+}
