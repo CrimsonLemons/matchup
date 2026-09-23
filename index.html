@@ -113,6 +113,8 @@
       <option>III liiga</option>
       <option>II liiga</option>
     </select>
+    <label for="onboard-phone">Sinu telefon (valikuline, et teised saaksid kokku leppida)</label>
+    <input type="text" id="onboard-phone" placeholder="nt 5555 5555">
     <button class="btn-primary" id="onboard-save">Alusta</button>
   </div>
 </div>
@@ -170,13 +172,14 @@
 <script>
 // ==== SEADISTUS: pane siia oma Apps Scripti "Web app URL" ====
 const CONFIG = {
-  API_URL: 'https://script.google.com/macros/s/AKfycbxQX4xjROs8wWgMd5vfIDTr1M0tdtfumFrGn3fcBzfcXiTwYVGWfD0lZrbVJ29UefmE/exec'
+  API_URL: 'https://script.google.com/macros/s/AKfycbzC7U3oGBg-pIuPC4EZJ-e13DMdQDijRmALvUZudz0375tg2QpHR7ssVH6dLucwmSEU/exec'
 };
 // ================================================================
 
 const LEVELS = ["Algaja", "IV liiga", "III liiga", "II liiga"];
 let myName = localStorage.getItem('tp_name') || '';
 let myLevel = localStorage.getItem('tp_level') || '';
+let myPhone = localStorage.getItem('tp_phone') || '';
 let cache = { players: [], matches: [] };
 
 const onboard = document.getElementById('onboard');
@@ -242,7 +245,7 @@ function renderMe() {
     const next = LEVELS[(idx + 1) % LEVELS.length];
     myLevel = next;
     localStorage.setItem('tp_level', next);
-    await apiPost({ action: 'savePlayer', name: myName, level: myLevel });
+    await apiPost({ action: 'savePlayer', name: myName, level: myLevel, phone: myPhone });
     renderMe();
     refresh();
   });
@@ -254,7 +257,7 @@ function renderPlayers() {
     return;
   }
   playersList.innerHTML = cache.players.map(p =>
-    `<div class="pill">${escapeHtml(p.name)} · ${escapeHtml(p.level)}</div>`
+    `<div class="pill">${escapeHtml(p.name)} · ${escapeHtml(p.level)}${p.phone ? ' · 📞 ' + escapeHtml(p.phone) : ''}</div>`
   ).join('');
 }
 
@@ -276,8 +279,10 @@ function renderMatches() {
     const iAmIn = m.participants.includes(myName);
     const iAmCreator = m.creatorName === myName;
 
+    const phoneByName = {};
+    cache.players.forEach(p => { phoneByName[p.name] = p.phone; });
     const pills = m.participants.map(name =>
-      `<div class="pill">${escapeHtml(name)}${name === m.creatorName ? ' 🎾' : ''}</div>`
+      `<div class="pill">${escapeHtml(name)}${name === m.creatorName ? ' 🎾' : ''}${phoneByName[name] ? ' · 📞 ' + escapeHtml(phoneByName[name]) : ''}</div>`
     ).join('');
 
     let actions = '';
@@ -373,14 +378,17 @@ document.getElementById('f-submit').addEventListener('click', async () => {
 document.getElementById('onboard-save').addEventListener('click', async () => {
   const name = document.getElementById('onboard-name').value.trim();
   const level = document.getElementById('onboard-level').value;
+  const phone = document.getElementById('onboard-phone').value.trim();
   if (!name || !level) { alert('Palun täida nimi ja tase.'); return; }
   myName = name;
   myLevel = level;
+  myPhone = phone;
   localStorage.setItem('tp_name', name);
   localStorage.setItem('tp_level', level);
+  localStorage.setItem('tp_phone', phone);
   onboard.style.display = 'none';
   renderMe();
-  apiPost({ action: 'savePlayer', name: myName, level: myLevel });
+  apiPost({ action: 'savePlayer', name: myName, level: myLevel, phone: myPhone });
   refresh();
 });
 
