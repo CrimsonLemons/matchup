@@ -166,6 +166,11 @@
   </section>
 
   <section>
+    <button class="toggle-form" id="toggle-past-btn">Näita möödunud mänge</button>
+    <div id="past-matches-list" style="display:none; margin-top:14px;"></div>
+  </section>
+
+  <section>
     <h2>Registreerunud mängijad</h2>
     <div class="card"><div class="players-list" id="players-list"></div></div>
   </section>
@@ -188,6 +193,8 @@ let cache = { players: [], matches: [] };
 const onboard = document.getElementById('onboard');
 const meCard = document.getElementById('me-card');
 const matchesList = document.getElementById('matches-list');
+const pastMatchesList = document.getElementById('past-matches-list');
+const togglePastBtn = document.getElementById('toggle-past-btn');
 const playersList = document.getElementById('players-list');
 const toggleBtn = document.getElementById('toggle-form-btn');
 const newForm = document.getElementById('new-form');
@@ -358,10 +365,56 @@ async function refresh() {
     cache = await apiGet();
     renderPlayers();
     renderMatches();
+    renderPastMatches();
   } catch (e) {
     matchesList.innerHTML = '<div class="empty">Andmeid ei õnnestunud laadida. Kontrolli API_URL seadistust.</div>';
   }
 }
+
+function renderPastMatches() {
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const past = cache.matches
+    .filter(m => m.date < todayStr)
+    .sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time))
+    .slice(0, 20);
+
+  if (!past.length) {
+    pastMatchesList.innerHTML = '<div class="empty">Möödunud mänge veel pole.</div>';
+    return;
+  }
+
+  pastMatchesList.innerHTML = past.map(m => {
+    const pills = m.participants.map(name =>
+      `<div class="pill">${escapeHtml(name)}${name === m.creatorName ? ' 🎾' : ''}</div>`
+    ).join('');
+    const iAmCreator = m.creatorName === myName;
+    const cancelBtn = iAmCreator
+      ? `<div class="match-actions"><button class="btn-danger-outline" data-cancel-past="${m.id}">Kustuta kirje</button></div>`
+      : '';
+    return `
+      <div class="card match-card" style="opacity:0.7;">
+        <div class="match-top">
+          <div>
+            <div class="match-when">${fmtDate(m.date)} · ${escapeHtml(m.time)}</div>
+            <div class="match-kind">${m.kind === 'doubles' ? 'paarismäng' : 'üksikmäng'}</div>
+          </div>
+        </div>
+        ${m.location ? `<div class="match-meta">📍 ${escapeHtml(m.location)}</div>` : ''}
+        <div class="participants">${pills}</div>
+        ${cancelBtn}
+      </div>
+    `;
+  }).join('');
+
+  pastMatchesList.querySelectorAll('[data-cancel-past]').forEach(btn =>
+    btn.addEventListener('click', () => cancelMatch(btn.dataset.cancelPast)));
+}
+
+togglePastBtn.addEventListener('click', () => {
+  const isHidden = pastMatchesList.style.display === 'none';
+  pastMatchesList.style.display = isHidden ? 'block' : 'none';
+  togglePastBtn.textContent = isHidden ? 'Peida möödunud mängud' : 'Näita möödunud mänge';
+});
 
 async function joinMatch(id) {
   await apiPost({ action: 'joinMatch', matchId: id, name: myName });
