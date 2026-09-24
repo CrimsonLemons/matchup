@@ -125,7 +125,7 @@
   <header class="top">
     <div>
       <h1>MatchUp</h1>
-      <div class="sub">Märgi endale mäng — keegi tuleb kaasa</div>
+      <div class="sub">Leia mängupartner — postita, millal tahad mängida</div>
     </div>
     <span class="court-tag">avatud üleskutsed</span>
   </header>
@@ -325,7 +325,7 @@ function renderMatches() {
     } else if (iAmIn) {
       actions = `<div class="match-actions"><button class="btn-ghost" style="flex:1;" data-leave="${m.id}">Loobun</button></div>`;
     } else if (!isFull) {
-      actions = `<div class="match-actions"><button class="btn-primary" style="margin-top:0;" data-join="${m.id}">Tulen kaasa</button></div>`;
+      actions = `<div class="match-actions"><button class="btn-primary" style="margin-top:0;" data-join="${m.id}">Tulen mängima</button></div>`;
     }
 
     return `
