@@ -115,6 +115,8 @@
     </select>
     <label for="onboard-phone">Sinu telefon (valikuline, et teised saaksid kokku leppida)</label>
     <input type="text" id="onboard-phone" placeholder="nt 5555 5555">
+    <label for="onboard-email">Sinu e-post (valikuline, teavituste jaoks)</label>
+    <input type="text" id="onboard-email" placeholder="nt reili@näide.ee">
     <button class="btn-primary" id="onboard-save">Alusta</button>
   </div>
 </div>
@@ -172,7 +174,7 @@
 <script>
 // ==== SEADISTUS: pane siia oma Apps Scripti "Web app URL" ====
 const CONFIG = {
-  API_URL: 'https://script.google.com/macros/s/AKfycbzC7U3oGBg-pIuPC4EZJ-e13DMdQDijRmALvUZudz0375tg2QpHR7ssVH6dLucwmSEU/exec'
+  API_URL: 'https://script.google.com/macros/s/AKfycbyoz9PGrJkwyyQneib6iYEkdXLHoOoHsOzRScKx2DqQ5oNZatLm1NrFbfItDgp8C8xv/exec'
 };
 // ================================================================
 
@@ -180,6 +182,7 @@ const LEVELS = ["Algaja", "IV liiga", "III liiga", "II liiga"];
 let myName = localStorage.getItem('tp_name') || '';
 let myLevel = localStorage.getItem('tp_level') || '';
 let myPhone = localStorage.getItem('tp_phone') || '';
+let myEmail = localStorage.getItem('tp_email') || '';
 let cache = { players: [], matches: [] };
 
 const onboard = document.getElementById('onboard');
@@ -237,15 +240,32 @@ function renderMe() {
         <div style="font-weight:600;">${escapeHtml(myName)}</div>
         <div class="notice">Tase: ${escapeHtml(myLevel)}</div>
       </div>
-      <button class="btn-ghost" id="change-level-btn">Muuda taset</button>
+      <button class="btn-ghost" id="edit-me-btn">Muuda andmeid</button>
+    </div>
+    <div id="edit-me-form" style="display:none; margin-top:14px;">
+      <label for="edit-level">Tase</label>
+      <select id="edit-level">
+        ${LEVELS.map(l => `<option value="${escapeHtml(l)}" ${l === myLevel ? 'selected' : ''}>${escapeHtml(l)}</option>`).join('')}
+      </select>
+      <label for="edit-phone">Telefon (valikuline)</label>
+      <input type="text" id="edit-phone" value="${escapeHtml(myPhone)}">
+      <label for="edit-email">E-post (valikuline, teavituste jaoks)</label>
+      <input type="text" id="edit-email" value="${escapeHtml(myEmail)}">
+      <button class="btn-primary" id="save-me-btn">Salvesta</button>
     </div>
   `;
-  document.getElementById('change-level-btn').addEventListener('click', async () => {
-    const idx = LEVELS.indexOf(myLevel);
-    const next = LEVELS[(idx + 1) % LEVELS.length];
-    myLevel = next;
-    localStorage.setItem('tp_level', next);
-    await apiPost({ action: 'savePlayer', name: myName, level: myLevel, phone: myPhone });
+  document.getElementById('edit-me-btn').addEventListener('click', () => {
+    const f = document.getElementById('edit-me-form');
+    f.style.display = f.style.display === 'none' ? 'block' : 'none';
+  });
+  document.getElementById('save-me-btn').addEventListener('click', async () => {
+    myLevel = document.getElementById('edit-level').value;
+    myPhone = document.getElementById('edit-phone').value.trim();
+    myEmail = document.getElementById('edit-email').value.trim();
+    localStorage.setItem('tp_level', myLevel);
+    localStorage.setItem('tp_phone', myPhone);
+    localStorage.setItem('tp_email', myEmail);
+    await apiPost({ action: 'savePlayer', name: myName, level: myLevel, phone: myPhone, email: myEmail });
     renderMe();
     refresh();
   });
@@ -257,7 +277,7 @@ function renderPlayers() {
     return;
   }
   playersList.innerHTML = cache.players.map(p =>
-    `<div class="pill">${escapeHtml(p.name)} · ${escapeHtml(p.level)}${p.phone ? ' · 📞 ' + escapeHtml(p.phone) : ''}</div>`
+    `<div class="pill">${escapeHtml(p.name)} · ${escapeHtml(p.level)}${p.phone ? ' · 📞 ' + escapeHtml(p.phone) : ''}${p.email ? ' · ✉️ ' + escapeHtml(p.email) : ''}</div>`
   ).join('');
 }
 
@@ -279,11 +299,13 @@ function renderMatches() {
     const iAmIn = m.participants.includes(myName);
     const iAmCreator = m.creatorName === myName;
 
-    const phoneByName = {};
-    cache.players.forEach(p => { phoneByName[p.name] = p.phone; });
-    const pills = m.participants.map(name =>
-      `<div class="pill">${escapeHtml(name)}${name === m.creatorName ? ' 🎾' : ''}${phoneByName[name] ? ' · 📞 ' + escapeHtml(phoneByName[name]) : ''}</div>`
-    ).join('');
+    const infoByName = {};
+    cache.players.forEach(p => { infoByName[p.name] = p; });
+    const pills = m.participants.map(name => {
+      const p = infoByName[name] || {};
+      const contact = [p.phone ? '📞 ' + p.phone : '', p.email ? '✉️ ' + p.email : ''].filter(Boolean).join(' · ');
+      return `<div class="pill">${escapeHtml(name)}${name === m.creatorName ? ' 🎾' : ''}${contact ? ' · ' + escapeHtml(contact) : ''}</div>`;
+    }).join('');
 
     let actions = '';
     if (iAmCreator) {
@@ -379,16 +401,19 @@ document.getElementById('onboard-save').addEventListener('click', async () => {
   const name = document.getElementById('onboard-name').value.trim();
   const level = document.getElementById('onboard-level').value;
   const phone = document.getElementById('onboard-phone').value.trim();
+  const email = document.getElementById('onboard-email').value.trim();
   if (!name || !level) { alert('Palun täida nimi ja tase.'); return; }
   myName = name;
   myLevel = level;
   myPhone = phone;
+  myEmail = email;
   localStorage.setItem('tp_name', name);
   localStorage.setItem('tp_level', level);
   localStorage.setItem('tp_phone', phone);
+  localStorage.setItem('tp_email', email);
   onboard.style.display = 'none';
   renderMe();
-  apiPost({ action: 'savePlayer', name: myName, level: myLevel, phone: myPhone });
+  apiPost({ action: 'savePlayer', name: myName, level: myLevel, phone: myPhone, email: myEmail });
   refresh();
 });
 
