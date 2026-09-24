@@ -174,7 +174,7 @@
 <script>
 // ==== SEADISTUS: pane siia oma Apps Scripti "Web app URL" ====
 const CONFIG = {
-  API_URL: 'https://script.google.com/macros/s/AKfycbwIAjipH9UiCshxlkCm2IpMtnZ4cOmvkWC2JnpK9wXZf14TvUFTfafyCP95FCn5eOo8/exec'
+  API_URL: 'https://script.google.com/macros/s/AKfycbw_lo8Z1kSUR50xHx8LAo2hIYWvRLHtooChwPp3zEVonu5q2KCxLGMo-NdHRSnFSCEQ/exec'
 };
 // ================================================================
 
@@ -252,6 +252,7 @@ function renderMe() {
       <label for="edit-email">E-post (valikuline, teavituste jaoks)</label>
       <input type="text" id="edit-email" value="${escapeHtml(myEmail)}">
       <button class="btn-primary" id="save-me-btn">Salvesta</button>
+      <button class="btn-danger-outline" id="delete-me-btn" style="width:100%; margin-top:8px;">Eemalda end nimekirjast</button>
     </div>
   `;
   document.getElementById('edit-me-btn').addEventListener('click', () => {
@@ -267,6 +268,17 @@ function renderMe() {
     localStorage.setItem('tp_email', myEmail);
     await apiPost({ action: 'savePlayer', name: myName, level: myLevel, phone: myPhone, email: myEmail });
     renderMe();
+    refresh();
+  });
+  document.getElementById('delete-me-btn').addEventListener('click', async () => {
+    if (!confirm('Kustutada oma andmed täielikult MatchUpist? Pead end hiljem uuesti registreerima.')) return;
+    await apiPost({ action: 'deletePlayer', name: myName });
+    localStorage.removeItem('tp_name');
+    localStorage.removeItem('tp_level');
+    localStorage.removeItem('tp_phone');
+    localStorage.removeItem('tp_email');
+    myName = ''; myLevel = ''; myPhone = ''; myEmail = '';
+    onboard.style.display = 'flex';
     refresh();
   });
 }
