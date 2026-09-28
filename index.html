@@ -215,7 +215,19 @@ function shortName(name) {
   return parts[0] + ' ' + parts[parts.length - 1].charAt(0).toUpperCase() + '.';
 }
 
-function fmtDate(dateStr) {
+// Mäng on möödunud, kui selle lõpuaeg on kohaliku aja järgi läbi.
+// Vanadel mängudel, kus on ainult algusaeg, loeme kestuseks 1,5 tundi.
+function isPast(m) {
+  const d = String(m.date || '').split('-').map(Number);
+  if (d.length !== 3 || d.some(isNaN)) return false;
+  const parts = String(m.time || '').split('–');          // "18:00–19:30" või vanal kujul "18:00"
+  const hm = (parts[1] || parts[0]).split(':').map(Number);
+  const hh = isNaN(hm[0]) ? 23 : hm[0];
+  const mm = isNaN(hm[1]) ? 59 : hm[1];
+  const end = new Date(d[0], d[1] - 1, d[2], hh, mm);
+  if (!parts[1] && !isNaN(hm[0])) end.setMinutes(end.getMinutes() + 90);
+  return end < new Date();
+}function fmtDate(dateStr) {
   if (!dateStr) return '';
   const [y, m, d] = String(dateStr).split('-').map(Number);
   const dt = new Date(y, m - 1, d);
@@ -326,7 +338,7 @@ function renderPlayers() {
 function renderMatches() {
   const todayStr = new Date().toISOString().slice(0, 10);
   const upcoming = cache.matches
-    .filter(m => m.date >= todayStr)
+    .filter(m => !isPast(m))
     .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
 
   if (!upcoming.length) {
@@ -395,7 +407,7 @@ async function refresh() {
 function renderPastMatches() {
   const todayStr = new Date().toISOString().slice(0, 10);
   const past = cache.matches
-    .filter(m => m.date < todayStr)
+    .filter(m => isPast(m))
     .sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time))
     .slice(0, 20);
 
