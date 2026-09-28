@@ -87,6 +87,8 @@
   .empty { color: var(--text-dim); font-size: 13.5px; text-align: center; padding: 26px 10px; border: 1px dashed var(--card-border); border-radius: var(--radius); }
   .notice { font-size: 13px; color: var(--text-dim); }
   .players-list { display: flex; flex-wrap: wrap; gap: 8px; }
+  .check { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--text); margin: 10px 0 0; }
+  .check input { width: auto; margin: 0; }
   #new-form { display: none; margin-top: 14px; }
   #new-form.open { display: block; }
 
@@ -102,7 +104,7 @@
 <div id="onboard">
   <div class="card">
     <h2 style="font-family:'Oswald',sans-serif;">Tere tulemast! 🎾</h2>
-    <p class="notice">Sisesta oma nimi — seda näevad teised, kui postitad üleskutse või liitud mänguga.</p>
+    <p class="notice">Sisesta oma nimi. Teistele näidatakse seda lühendatult (nt Reili E.), kui postitad üleskutse või liitud mänguga.</p>
     <label for="onboard-name">Sinu nimi</label>
     <input type="text" id="onboard-name" placeholder="nt Reili">
     <label for="onboard-level">Sinu tase</label>
@@ -113,9 +115,9 @@
       <option>III liiga</option>
       <option>II liiga</option>
     </select>
-    <label for="onboard-phone">Sinu telefon (valikuline, et teised saaksid kokku leppida)</label>
+    <label for="onboard-phone">Sinu telefon (valikuline; nähtav ainult sama mängu osalejatele)</label>
     <input type="text" id="onboard-phone" placeholder="nt 5555 5555">
-    <label for="onboard-email">Sinu e-post (valikuline, teavituste jaoks)</label>
+    <label for="onboard-email">Sinu e-post (valikuline; nähtav ainult sama mängu osalejatele, kasutatakse ka teavituste jaoks)</label>
     <input type="text" id="onboard-email" placeholder="nt reili@näide.ee">
     <button class="btn-primary" id="onboard-save">Alusta</button>
   </div>
@@ -179,7 +181,7 @@
 <script>
 // ==== SEADISTUS: pane siia oma Apps Scripti "Web app URL" ====
 const CONFIG = {
-  API_URL: 'https://script.google.com/macros/s/AKfycbwnrpsv8gZfbk3qhqGSFIl8FnABUuVptpkoyPxCzIA1aYmS3uKEcQE95b-ZqPeOPxdL/exec'
+  API_URL: 'https://script.google.com/macros/s/AKfycbwU8W7PTQyhKO7Kfxru4hufycKPJQgWjV1-KKa5k8acw4X45fxrJQteR-DKFWUZ8Vl5/exec'
 };
 // ================================================================
 
@@ -188,6 +190,8 @@ let myName = localStorage.getItem('tp_name') || '';
 let myLevel = localStorage.getItem('tp_level') || '';
 let myPhone = localStorage.getItem('tp_phone') || '';
 let myEmail = localStorage.getItem('tp_email') || '';
+let myDigest = localStorage.getItem('tp_digest') === '1';
+let myDigestLevels = (localStorage.getItem('tp_digest_levels') || '').split(',').filter(Boolean);
 let cache = { players: [], matches: [] };
 
 const onboard = document.getElementById('onboard');
@@ -203,6 +207,12 @@ function escapeHtml(s) {
   const d = document.createElement('div');
   d.textContent = s == null ? '' : String(s);
   return d.innerHTML;
+}
+
+function shortName(name) {
+  const parts = String(name || '').trim().split(/\s+/);
+  if (parts.length < 2) return parts[0] || '';
+  return parts[0] + ' ' + parts[parts.length - 1].charAt(0).toUpperCase() + '.';
 }
 
 function fmtDate(dateStr) {
@@ -223,7 +233,7 @@ function addMinutes(timeStr, mins) {
 }
 
 async function apiGet() {
-  const res = await fetch(CONFIG.API_URL);
+  const res = await fetch(CONFIG.API_URL + '?name=' + encodeURIComponent(myName));
   return res.json();
 }
 
@@ -236,11 +246,17 @@ async function apiPost(payload) {
     });
     return await res.json();
   } catch (e) {
+    // Kiri läks tõenäoliselt siiski kohale (Google Sheet salvestab enne vastuse saatmist) —
+    // ainult vastuse lugemine brauseris ebaõnnestus. Ei viska viga edasi, et kasutajaliides ei jääks kinni.
     return null;
   }
 }
 
 function renderMe() {
+  const levelChecks = LEVELS.map(l => {
+    const checked = myDigestLevels.length === 0 || myDigestLevels.indexOf(l) !== -1;
+    return `<label class="check"><input type="checkbox" class="digest-level" value="${escapeHtml(l)}" ${checked ? 'checked' : ''}> ${escapeHtml(l)}</label>`;
+  }).join('');
   meCard.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;">
       <div>
@@ -254,10 +270,13 @@ function renderMe() {
       <select id="edit-level">
         ${LEVELS.map(l => `<option value="${escapeHtml(l)}" ${l === myLevel ? 'selected' : ''}>${escapeHtml(l)}</option>`).join('')}
       </select>
-      <label for="edit-phone">Telefon (valikuline)</label>
+      <label for="edit-phone">Telefon (valikuline; nähtav ainult sama mängu osalejatele)</label>
       <input type="text" id="edit-phone" value="${escapeHtml(myPhone)}">
-      <label for="edit-email">E-post (valikuline, teavituste jaoks)</label>
+      <label for="edit-email">E-post (valikuline; nähtav ainult sama mängu osalejatele)</label>
       <input type="text" id="edit-email" value="${escapeHtml(myEmail)}">
+      <label class="check" style="margin-top:18px;"><input type="checkbox" id="edit-digest" ${myDigest ? 'checked' : ''}> Saada mulle hommikune kokkuvõte uutest üleskutsetest</label>
+      <div class="notice" style="margin-top:8px;">Millise taseme mängud (mängu loonud inimese tase) kokkuvõttesse tulevad:</div>
+      ${levelChecks}
       <button class="btn-primary" id="save-me-btn">Salvesta</button>
       <button class="btn-danger-outline" id="delete-me-btn" style="width:100%; margin-top:8px;">Eemalda end nimekirjast</button>
     </div>
@@ -267,24 +286,28 @@ function renderMe() {
     f.style.display = f.style.display === 'none' ? 'block' : 'none';
   });
   document.getElementById('save-me-btn').addEventListener('click', async () => {
-    myLevel = document.getElementById('edit-level').value;
-    myPhone = document.getElementById('edit-phone').value.trim();
-    myEmail = document.getElementById('edit-email').value.trim();
+    const level = document.getElementById('edit-level').value;
+    const phone = document.getElementById('edit-phone').value.trim();
+    const email = document.getElementById('edit-email').value.trim();
+    const digest = document.getElementById('edit-digest').checked;
+    let levels = Array.from(document.querySelectorAll('.digest-level')).filter(c => c.checked).map(c => c.value);
+    if (levels.length === LEVELS.length) levels = [];   // kõik tasemed = filtrit pole
+    if (digest && !email) { alert('Kokkuvõtte saamiseks lisa e-posti aadress.'); return; }
+    myLevel = level; myPhone = phone; myEmail = email; myDigest = digest; myDigestLevels = levels;
     localStorage.setItem('tp_level', myLevel);
     localStorage.setItem('tp_phone', myPhone);
     localStorage.setItem('tp_email', myEmail);
-    await apiPost({ action: 'savePlayer', name: myName, level: myLevel, phone: myPhone, email: myEmail });
+    localStorage.setItem('tp_digest', myDigest ? '1' : '');
+    localStorage.setItem('tp_digest_levels', myDigestLevels.join(','));
+    await apiPost({ action: 'savePlayer', name: myName, level: myLevel, phone: myPhone, email: myEmail, digest: myDigest, digestLevels: myDigestLevels.join(',') });
     renderMe();
     refresh();
   });
   document.getElementById('delete-me-btn').addEventListener('click', async () => {
     if (!confirm('Kustutada oma andmed täielikult MatchUpist? Pead end hiljem uuesti registreerima.')) return;
     await apiPost({ action: 'deletePlayer', name: myName });
-    localStorage.removeItem('tp_name');
-    localStorage.removeItem('tp_level');
-    localStorage.removeItem('tp_phone');
-    localStorage.removeItem('tp_email');
-    myName = ''; myLevel = ''; myPhone = ''; myEmail = '';
+    ['tp_name', 'tp_level', 'tp_phone', 'tp_email', 'tp_digest', 'tp_digest_levels'].forEach(k => localStorage.removeItem(k));
+    myName = ''; myLevel = ''; myPhone = ''; myEmail = ''; myDigest = false; myDigestLevels = [];
     onboard.style.display = 'flex';
     refresh();
   });
@@ -296,7 +319,7 @@ function renderPlayers() {
     return;
   }
   playersList.innerHTML = cache.players.map(p =>
-    `<div class="pill">${escapeHtml(p.name)} · ${escapeHtml(p.level)}${p.phone ? ' · 📞 ' + escapeHtml(p.phone) : ''}${p.email ? ' · ✉️ ' + escapeHtml(p.email) : ''}</div>`
+    `<div class="pill">${escapeHtml(shortName(p.name))} · ${escapeHtml(p.level)}</div>`
   ).join('');
 }
 
@@ -318,12 +341,10 @@ function renderMatches() {
     const iAmIn = m.participants.includes(myName);
     const iAmCreator = m.creatorName === myName;
 
-    const infoByName = {};
-    cache.players.forEach(p => { infoByName[p.name] = p; });
     const pills = m.participants.map(name => {
-      const p = infoByName[name] || {};
-      const contact = [p.phone ? '📞 ' + p.phone : '', p.email ? '✉️ ' + p.email : ''].filter(Boolean).join(' · ');
-      return `<div class="pill">${escapeHtml(name)}${name === m.creatorName ? ' 🎾' : ''}${contact ? ' · ' + escapeHtml(contact) : ''}</div>`;
+      const c = (m.contacts || {})[name] || {};
+      const contact = [c.phone ? '📞 ' + c.phone : '', c.email ? '✉️ ' + c.email : ''].filter(Boolean).join(' · ');
+      return `<div class="pill">${escapeHtml(shortName(name))}${name === m.creatorName ? ' 🎾' : ''}${contact ? ' · ' + escapeHtml(contact) : ''}</div>`;
     }).join('');
 
     let actions = '';
@@ -385,7 +406,7 @@ function renderPastMatches() {
 
   pastMatchesList.innerHTML = past.map(m => {
     const pills = m.participants.map(name =>
-      `<div class="pill">${escapeHtml(name)}${name === m.creatorName ? ' 🎾' : ''}</div>`
+      `<div class="pill">${escapeHtml(shortName(name))}${name === m.creatorName ? ' 🎾' : ''}</div>`
     ).join('');
     const iAmCreator = m.creatorName === myName;
     const cancelBtn = iAmCreator
@@ -478,7 +499,7 @@ document.getElementById('onboard-save').addEventListener('click', async () => {
   localStorage.setItem('tp_email', email);
   onboard.style.display = 'none';
   renderMe();
-  apiPost({ action: 'savePlayer', name: myName, level: myLevel, phone: myPhone, email: myEmail });
+  apiPost({ action: 'savePlayer', name: myName, level: myLevel, phone: myPhone, email: myEmail, digest: false, digestLevels: '' });
   refresh();
 });
 
